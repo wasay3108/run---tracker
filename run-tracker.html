@@ -1,0 +1,1662 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>RunTracker</title>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+  <style>
+    *, *::before, *::after {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+      -webkit-tap-highlight-color: transparent;
+    }
+
+    :root {
+      --bg:          #080c10;
+      --surface:     #0f1923;
+      --surface-2:   #192030;
+      --border:      #1e2d3d;
+      --text:        #e8f0fe;
+      --text-muted:  #5a7a9a;
+      --accent:      #00d084;
+      --accent-dim:  rgba(0, 208, 132, 0.15);
+      --accent-glow: rgba(0, 208, 132, 0.25);
+      --danger:      #ff4f4f;
+      --danger-dim:  rgba(255, 79, 79, 0.15);
+    }
+
+    html, body { height: 100%; }
+
+    body {
+      background: var(--bg);
+      color: var(--text);
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Helvetica Neue', sans-serif;
+      min-height: 100dvh;
+      max-width: 480px;
+      margin: 0 auto;
+      display: flex;
+      flex-direction: column;
+    }
+
+    /* ── HEADER ── */
+    header {
+      background: var(--surface);
+      border-bottom: 1px solid var(--border);
+      padding: 18px 20px 0;
+      position: sticky;
+      top: 0;
+      z-index: 100;
+      flex-shrink: 0;
+    }
+
+    .logo {
+      font-size: 20px;
+      font-weight: 800;
+      letter-spacing: -0.5px;
+      margin-bottom: 14px;
+    }
+
+    .logo-accent { color: var(--accent); }
+
+    nav { display: flex; }
+
+    .nav-tab {
+      flex: 1;
+      padding: 11px 0;
+      background: none;
+      border: none;
+      color: var(--text-muted);
+      font-size: 14px;
+      font-weight: 600;
+      cursor: pointer;
+      border-bottom: 2px solid transparent;
+      transition: color 0.2s, border-color 0.2s;
+      letter-spacing: 0.3px;
+    }
+
+    .nav-tab.active {
+      color: var(--accent);
+      border-bottom-color: var(--accent);
+    }
+
+    /* ── MAIN ── */
+    main {
+      flex: 1;
+      overflow-y: auto;
+      -webkit-overflow-scrolling: touch;
+      padding: 20px 16px 36px;
+    }
+
+    .view { display: none; }
+    .view.active { display: block; }
+
+    /* ── GPS BADGE ── */
+    .gps-badge {
+      display: flex;
+      align-items: center;
+      gap: 7px;
+      padding: 7px 14px;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 100px;
+      font-size: 12px;
+      font-weight: 600;
+      color: var(--text-muted);
+      letter-spacing: 0.3px;
+      margin: 0 0 18px;
+      width: fit-content;
+      text-transform: uppercase;
+    }
+
+    .gps-dot {
+      width: 7px;
+      height: 7px;
+      border-radius: 50%;
+      background: var(--text-muted);
+      flex-shrink: 0;
+    }
+
+    .gps-dot.active  { background: var(--accent); animation: blink 1.4s ease-in-out infinite; }
+    .gps-dot.error   { background: var(--danger); }
+    .gps-dot.waiting { background: #f59e0b; animation: blink 0.8s ease-in-out infinite; }
+
+    @keyframes blink {
+      0%, 100% { opacity: 1; }
+      50%       { opacity: 0.3; }
+    }
+
+    /* ── METRIC CARDS ── */
+    .metrics-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 10px;
+      margin-bottom: 18px;
+    }
+
+    .metric-card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 18px;
+      padding: 18px 14px;
+      text-align: center;
+      transition: border-color 0.3s, box-shadow 0.3s;
+    }
+
+    .metric-card.wide { grid-column: 1 / -1; }
+
+    .metric-card.lit {
+      border-color: rgba(0, 208, 132, 0.3);
+      box-shadow: 0 0 28px var(--accent-glow), inset 0 1px 0 rgba(0, 208, 132, 0.1);
+    }
+
+    .metric-label {
+      font-size: 10px;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 1.5px;
+      color: var(--text-muted);
+      margin-bottom: 8px;
+    }
+
+    .metric-value {
+      font-size: 40px;
+      font-weight: 800;
+      color: var(--text);
+      line-height: 1;
+      letter-spacing: -2px;
+      font-variant-numeric: tabular-nums;
+    }
+
+    .metric-card.wide .metric-value {
+      font-size: 58px;
+      letter-spacing: -3px;
+    }
+
+    .metric-unit {
+      font-size: 15px;
+      font-weight: 500;
+      color: var(--text-muted);
+      letter-spacing: 0;
+    }
+
+    .metric-card.wide .metric-unit { font-size: 20px; }
+
+    /* ── BUTTONS ── */
+    .btn {
+      width: 100%;
+      padding: 22px;
+      border: none;
+      border-radius: 18px;
+      font-size: 18px;
+      font-weight: 700;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 12px;
+      letter-spacing: 0.5px;
+      transition: transform 0.12s, box-shadow 0.12s;
+      user-select: none;
+    }
+
+    .btn:active { transform: scale(0.96); }
+
+    .btn-start {
+      background: var(--accent);
+      color: #000;
+      box-shadow: 0 8px 32px var(--accent-glow);
+    }
+
+    .btn-start:hover { box-shadow: 0 8px 40px rgba(0, 208, 132, 0.4); }
+
+    .btn-pause {
+      background: var(--surface-2);
+      color: var(--text);
+      border: 1px solid var(--border);
+    }
+
+    .btn-resume {
+      background: var(--accent);
+      color: #000;
+      box-shadow: 0 8px 32px var(--accent-glow);
+    }
+
+    .btn-end {
+      background: var(--danger);
+      color: #fff;
+      box-shadow: 0 8px 32px rgba(255, 79, 79, 0.25);
+    }
+
+    .run-btn-row {
+      display: flex;
+      gap: 10px;
+    }
+
+    .run-btn-row .btn {
+      width: auto;
+      flex: 1;
+    }
+
+    /* ── TRACKER LAYOUT ── */
+    #tracker-view.active {
+      display: flex;
+      flex-direction: column;
+      min-height: calc(100dvh - 92px);
+    }
+
+    /* ── QUOTE (slim, sits just above button) ── */
+    .quote-section {
+      text-align: center;
+      padding: 0 12px 14px;
+    }
+
+    .quote-text {
+      font-size: 12.5px;
+      font-style: italic;
+      color: var(--text-muted);
+      line-height: 1.6;
+      margin-bottom: 5px;
+    }
+
+    .quote-author {
+      font-size: 11px;
+      font-weight: 700;
+      color: var(--accent);
+      letter-spacing: 0.3px;
+      opacity: 0.75;
+    }
+
+    /* ── BOTTOM ZONE (quote + button, pushed to screen bottom) ── */
+    .bottom-zone {
+      margin-top: auto;
+      padding-top: 10px;
+    }
+
+    /* ── HISTORY STATS ── */
+    .stats-row {
+      display: grid;
+      grid-template-columns: repeat(2, 1fr);
+      gap: 10px;
+      margin-bottom: 24px;
+    }
+
+    .stat-card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 16px;
+      padding: 16px 8px;
+      text-align: center;
+    }
+
+    .stat-value {
+      font-size: 22px;
+      font-weight: 800;
+      color: var(--accent);
+      line-height: 1;
+      margin-bottom: 5px;
+      font-variant-numeric: tabular-nums;
+      letter-spacing: -0.5px;
+    }
+
+    .stat-label {
+      font-size: 10px;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 1px;
+      color: var(--text-muted);
+    }
+
+    /* ── CHART ── */
+    .section-title {
+      font-size: 11px;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 1.5px;
+      color: var(--text-muted);
+      margin-bottom: 10px;
+    }
+
+    .chart-wrap {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 18px;
+      padding: 16px 12px 12px;
+      margin-bottom: 24px;
+      height: 190px;
+      position: relative;
+    }
+
+    .chart-empty {
+      position: absolute;
+      inset: 0;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      color: var(--text-muted);
+      font-size: 13px;
+    }
+
+    /* ── CHART HEADER ── */
+    .chart-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 10px;
+    }
+
+    .chart-header .section-title { margin-bottom: 0; }
+
+    .run-select {
+      background: var(--surface-2);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      color: var(--text);
+      font-size: 11px;
+      font-weight: 600;
+      padding: 4px 8px;
+      cursor: pointer;
+      outline: none;
+      max-width: 160px;
+      -webkit-appearance: none;
+      appearance: none;
+    }
+
+    /* ── RUN LIST ── */
+    .run-list {
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
+
+    .run-card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 16px;
+      padding: 14px;
+      display: grid;
+      grid-template-columns: auto 1fr auto;
+      align-items: center;
+      gap: 12px;
+    }
+
+    .run-num {
+      width: 32px;
+      height: 32px;
+      border-radius: 50%;
+      background: var(--surface-2);
+      border: 1px solid var(--border);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 12px;
+      font-weight: 700;
+      color: var(--text-muted);
+      flex-shrink: 0;
+    }
+
+    .run-info { min-width: 0; }
+
+    .run-date {
+      font-size: 12px;
+      color: var(--text-muted);
+      margin-bottom: 3px;
+      font-weight: 500;
+    }
+
+    .run-dist {
+      font-size: 20px;
+      font-weight: 800;
+      color: var(--text);
+      letter-spacing: -0.5px;
+      margin-bottom: 3px;
+    }
+
+    .run-meta {
+      display: flex;
+      gap: 6px;
+      align-items: center;
+      font-size: 12px;
+      color: var(--text-muted);
+    }
+
+    .run-meta b { color: var(--text); font-weight: 600; }
+    .run-sep { opacity: 0.35; }
+
+    .del-btn {
+      background: none;
+      border: none;
+      color: var(--text-muted);
+      cursor: pointer;
+      padding: 8px;
+      border-radius: 10px;
+      font-size: 15px;
+      transition: color 0.2s, background 0.2s;
+      line-height: 1;
+      align-self: start;
+    }
+
+    .del-btn:hover {
+      color: var(--danger);
+      background: var(--danger-dim);
+    }
+
+    /* ── EMPTY STATE ── */
+    .empty {
+      text-align: center;
+      padding: 50px 20px;
+    }
+
+    .empty-icon {
+      font-size: 52px;
+      margin-bottom: 14px;
+      display: block;
+      opacity: 0.4;
+      filter: grayscale(1);
+    }
+
+    .empty p {
+      font-size: 14px;
+      color: var(--text-muted);
+      line-height: 1.6;
+    }
+
+    .empty strong { color: var(--text); }
+
+    /* ── TOAST ── */
+    #toast {
+      position: fixed;
+      bottom: 28px;
+      left: 50%;
+      transform: translateX(-50%) translateY(80px);
+      background: var(--surface-2);
+      border: 1px solid var(--border);
+      color: var(--text);
+      padding: 12px 22px;
+      border-radius: 100px;
+      font-size: 13px;
+      font-weight: 600;
+      z-index: 999;
+      white-space: nowrap;
+      transition: transform 0.3s cubic-bezier(0.34, 1.56, 0.64, 1);
+      pointer-events: none;
+      max-width: calc(100vw - 40px);
+    }
+
+    #toast.show { transform: translateX(-50%) translateY(0); }
+
+    /* ── BMI PILL BUTTON ── */
+    .bmi-pill-btn {
+      background: var(--accent);
+      color: #000;
+      border: none;
+      border-radius: 100px;
+      padding: 6px 13px;
+      font-size: 12px;
+      font-weight: 700;
+      cursor: pointer;
+      letter-spacing: 0.3px;
+      transition: opacity 0.15s, transform 0.12s;
+      white-space: nowrap;
+    }
+
+    .bmi-pill-btn:active { transform: scale(0.95); }
+
+    /* ── BMI OVERLAY ── */
+    .bmi-overlay {
+      position: fixed;
+      inset: 0;
+      background: var(--bg);
+      z-index: 200;
+      display: flex;
+      flex-direction: column;
+      max-width: 480px;
+      margin: 0 auto;
+    }
+
+    .bmi-top {
+      background: var(--surface);
+      border-bottom: 1px solid var(--border);
+      padding: 14px 16px;
+      display: flex;
+      align-items: center;
+      flex-shrink: 0;
+    }
+
+    .bmi-back {
+      background: none;
+      border: none;
+      color: var(--accent);
+      font-size: 14px;
+      font-weight: 700;
+      cursor: pointer;
+      padding: 6px 10px 6px 0;
+      transition: opacity 0.15s;
+    }
+
+    .bmi-back:hover { opacity: 0.7; }
+
+    .bmi-title {
+      flex: 1;
+      text-align: center;
+      font-size: 16px;
+      font-weight: 700;
+      color: var(--text);
+      margin-right: 40px; /* balance back button width */
+    }
+
+    .bmi-body {
+      flex: 1;
+      overflow-y: auto;
+      padding: 24px 16px 36px;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+    }
+
+    /* Inputs */
+    .bmi-fields {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 12px;
+      width: 100%;
+      margin-bottom: 14px;
+    }
+
+    .bmi-field { display: flex; flex-direction: column; gap: 6px; }
+
+    .bmi-label {
+      font-size: 10px;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 1.5px;
+      color: var(--text-muted);
+    }
+
+    .bmi-input-group {
+      display: flex;
+      align-items: center;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 14px;
+      overflow: hidden;
+      transition: border-color 0.2s;
+    }
+
+    .bmi-input-group:focus-within { border-color: var(--accent); }
+
+    .bmi-input {
+      flex: 1;
+      background: none;
+      border: none;
+      outline: none;
+      padding: 14px 12px;
+      font-size: 22px;
+      font-weight: 700;
+      color: var(--text);
+      width: 0;
+      font-variant-numeric: tabular-nums;
+    }
+
+    .bmi-input::placeholder { color: var(--text-muted); opacity: 0.4; }
+
+    .bmi-unit {
+      padding: 0 12px 0 2px;
+      font-size: 13px;
+      font-weight: 600;
+      color: var(--text-muted);
+    }
+
+    /* Gauge */
+    .bmi-gauge-wrap {
+      width: 100%;
+      max-width: 300px;
+      margin: 22px 0 6px;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+    }
+
+    .bmi-gauge { width: 100%; }
+
+    #bmi-needle-group {
+      transform-origin: 130px 140px;
+      transition: transform 0.95s cubic-bezier(0.34, 1.56, 0.64, 1), opacity 0.4s;
+    }
+
+    /* Legend */
+    .bmi-legend {
+      display: flex;
+      gap: 10px 16px;
+      flex-wrap: wrap;
+      justify-content: center;
+      margin: 12px 0 4px;
+    }
+
+    .bmi-legend-item {
+      display: flex;
+      align-items: center;
+      gap: 5px;
+      font-size: 11px;
+      color: var(--text-muted);
+    }
+
+    .bmi-legend-dot {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      flex-shrink: 0;
+    }
+
+    /* Result */
+    .bmi-result-info { text-align: center; margin-top: 8px; }
+
+    .bmi-value {
+      font-size: 52px;
+      font-weight: 800;
+      color: var(--text);
+      line-height: 1;
+      letter-spacing: -2px;
+      font-variant-numeric: tabular-nums;
+    }
+
+    .bmi-cat-label {
+      display: inline-block;
+      margin-top: 10px;
+      font-size: 14px;
+      font-weight: 700;
+      padding: 5px 18px;
+      border-radius: 100px;
+      letter-spacing: 0.4px;
+    }
+
+    .bmi-cat-under    { background: rgba(59,130,246,0.15); color: #3b82f6; }
+    .bmi-cat-normal   { background: var(--accent-dim);     color: var(--accent); }
+    .bmi-cat-over     { background: rgba(245,158,11,0.15); color: #f59e0b; }
+    .bmi-cat-obese    { background: var(--danger-dim);     color: var(--danger); }
+
+    /* Unit toggle */
+    .bmi-field-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+
+    .unit-toggle {
+      display: flex;
+      gap: 3px;
+      background: var(--surface-2);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 2px;
+    }
+
+    .unit-btn {
+      background: none;
+      border: none;
+      border-radius: 6px;
+      padding: 2px 7px;
+      font-size: 10px;
+      font-weight: 700;
+      color: var(--text-muted);
+      cursor: pointer;
+      transition: background 0.15s, color 0.15s;
+      letter-spacing: 0.3px;
+    }
+
+    .unit-btn.active {
+      background: var(--accent);
+      color: #000;
+    }
+  </style>
+</head>
+<body>
+
+<header>
+  <div class="logo"><span class="logo-accent">Run</span>Tracker</div>
+  <nav>
+    <button class="nav-tab active" data-view="tracker" onclick="switchView('tracker', this)">Track</button>
+    <button class="nav-tab"        data-view="history" onclick="switchView('history', this)">History</button>
+  </nav>
+</header>
+
+<main>
+
+  <!-- ═══ TRACKER ═══ -->
+  <section id="tracker-view" class="view active">
+
+    <!-- GPS status + BMI button on same row -->
+    <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:18px;">
+      <div class="gps-badge" style="margin:0">
+        <span class="gps-dot" id="gps-dot"></span>
+        <span id="gps-text">Ready</span>
+      </div>
+      <button class="bmi-pill-btn" onclick="openBMI()">Check BMI</button>
+    </div>
+
+    <!-- Metrics — center stage -->
+    <div class="metrics-grid">
+      <div class="metric-card wide" id="card-dist">
+        <div class="metric-label">Distance</div>
+        <div class="metric-value" id="val-dist">0.00<span class="metric-unit"> km</span></div>
+      </div>
+      <div class="metric-card" id="card-time">
+        <div class="metric-label">Time</div>
+        <div class="metric-value" id="val-time">00:00</div>
+      </div>
+      <div class="metric-card" id="card-speed">
+        <div class="metric-label">Speed</div>
+        <div class="metric-value" id="val-speed">--.-<span class="metric-unit"> km/h</span></div>
+      </div>
+      <div class="metric-card" id="card-steps">
+        <div class="metric-label">Steps</div>
+        <div class="metric-value" id="val-steps">0</div>
+      </div>
+      <div class="metric-card" id="card-cals">
+        <div class="metric-label">Calories</div>
+        <div class="metric-value" id="val-cals">0<span class="metric-unit"> kcal</span></div>
+      </div>
+    </div>
+
+    <!-- Quote + button anchored to bottom -->
+    <div class="bottom-zone">
+      <div class="quote-section">
+        <p class="quote-text" id="quote-text"></p>
+        <p class="quote-author" id="quote-author"></p>
+      </div>
+      <button class="btn btn-start" id="start-btn" onclick="startRun()">
+        &#9654;&nbsp; Start Run
+      </button>
+      <div class="run-btn-row" id="run-btn-row" style="display:none">
+        <button class="btn btn-pause" id="pause-btn" onclick="togglePause()">
+          &#9646;&#9646;&nbsp; Pause
+        </button>
+        <button class="btn btn-end" onclick="stopRun()">
+          &#9632;&nbsp; End Run
+        </button>
+      </div>
+    </div>
+
+  </section>
+
+  <!-- ═══ HISTORY ═══ -->
+  <section id="history-view" class="view">
+
+    <div class="stats-row">
+      <div class="stat-card">
+        <div class="stat-value" id="st-runs">0</div>
+        <div class="stat-label">Runs</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-value" id="st-km">0.00</div>
+        <div class="stat-label">Total km</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-value" id="st-speed">--</div>
+        <div class="stat-label">Best km/h</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-value" id="st-avgspd">--</div>
+        <div class="stat-label">Avg km/h</div>
+      </div>
+    </div>
+
+    <div class="chart-header">
+      <span class="section-title">Speed per 100m</span>
+      <select id="run-select" class="run-select" onchange="onRunSelect(this)" style="display:none"></select>
+    </div>
+    <div class="chart-wrap">
+      <canvas id="chart" style="display:none"></canvas>
+      <div class="chart-empty" id="chart-empty">No runs recorded yet</div>
+    </div>
+
+    <div class="section-title">Run History</div>
+    <div class="run-list" id="run-list"></div>
+
+  </section>
+
+</main>
+
+<div id="toast"></div>
+
+<script>
+// ════════════════════════════════════════════════
+// QUOTES
+// ════════════════════════════════════════════════
+const QUOTES = [
+  { text: "The miracle isn't that I finished. The miracle is that I had the courage to start.", author: "— John Bingham" },
+  { text: "Run when you can, walk if you have to, crawl if you must; just never give up.", author: "— Dean Karnazes" },
+  { text: "You don't have to go fast. You just have to go.", author: "— Unknown" },
+  { text: "Pain is temporary. Quitting lasts forever.", author: "— Lance Armstrong" },
+  { text: "The body achieves what the mind believes.", author: "— Unknown" },
+  { text: "Running is the greatest metaphor for life: you get out of it what you put into it.", author: "— Oprah Winfrey" },
+  { text: "There is something magical about running; after a certain distance, it transcends the body.", author: "— Kristin Armstrong" },
+  { text: "Champions aren't made in gyms. Champions are made from something deep inside them.", author: "— Muhammad Ali" },
+  { text: "Every morning you have two choices: continue to sleep with your dreams, or wake up and chase them.", author: "— Unknown" },
+  { text: "It always seems impossible until it's done.", author: "— Nelson Mandela" },
+];
+
+// ════════════════════════════════════════════════
+// STATE
+// ════════════════════════════════════════════════
+let running     = false;
+let paused      = false;
+let watchId     = null;
+let timerHandle = null;
+let startEpoch  = 0;
+let elapsed     = 0;   // seconds
+let distKm          = 0;
+let lastPos         = null;
+let gpsWindow       = [];   // rolling last-5 accepted GPS points: {dist, ts}
+let rollingSpeedKmh = null;
+let trackPoints     = [];   // full GPS track for this run: [{lat, lng, ts}]
+let wakeLock        = null;
+let chartInst   = null;
+let weightUnit  = 'kg';
+let heightUnit  = 'cm';
+
+// Step detection state
+let stepCount    = 0;
+let stepSmooth   = 9.8;   // running average of accel magnitude, initialized to gravity
+let stepPeak     = false; // are we currently in a peak?
+let stepLastTime = 0;     // timestamp of last counted step
+
+const STEP_THRESHOLD = 11.0; // m/s² above which a step peak is detected
+const STEP_COOLDOWN  = 280;  // ms minimum between steps (~214 steps/min max)
+const CAL_PER_STEP   = 0.05; // kcal per step (avg ~70 kg person running)
+
+// ════════════════════════════════════════════════
+// STORAGE
+// ════════════════════════════════════════════════
+const STORE_KEY = 'rt_runs_v1';
+
+function loadRuns() {
+  try { return JSON.parse(localStorage.getItem(STORE_KEY) || '[]'); }
+  catch { return []; }
+}
+
+function persistRuns(runs) {
+  localStorage.setItem(STORE_KEY, JSON.stringify(runs));
+}
+
+function pushRun(run) {
+  const runs = loadRuns();
+  runs.unshift(run);
+  persistRuns(runs);
+}
+
+function removeRun(id) {
+  persistRuns(loadRuns().filter(r => r.id !== id));
+  renderHistory();
+  toast('Run deleted');
+}
+
+// ════════════════════════════════════════════════
+// MATH / FORMAT
+// ════════════════════════════════════════════════
+function haversine(la1, lo1, la2, lo2) {
+  const R = 6371, r = Math.PI / 180;
+  const dLa = (la2 - la1) * r, dLo = (lo2 - lo1) * r;
+  const a = Math.sin(dLa / 2) ** 2
+          + Math.cos(la1 * r) * Math.cos(la2 * r) * Math.sin(dLo / 2) ** 2;
+  return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+}
+
+function fmtTime(s) {
+  const h = Math.floor(s / 3600), m = Math.floor((s % 3600) / 60), sec = s % 60;
+  return h > 0 ? `${h}:${z(m)}:${z(sec)}` : `${z(m)}:${z(sec)}`;
+}
+
+function fmtSpeed(kmh) {
+  if (!isFinite(kmh) || kmh <= 0) return '--.-';
+  return kmh.toFixed(1);
+}
+
+function fmtDate(iso) {
+  return new Date(iso).toLocaleDateString('en-US',
+    { weekday: 'short', month: 'short', day: 'numeric' });
+}
+
+function fmtNum(n) { return n.toLocaleString(); }
+
+function fmtChartDate(iso) {
+  const d = new Date(iso);
+  return `${d.getMonth() + 1}/${d.getDate()}`;
+}
+
+function z(n) { return String(n).padStart(2, '0'); }
+
+// Derive speed (km/h) — handles both new (speed) and old (pace sec/km) schema
+function runSpeed(r) {
+  if (r.speed != null) return r.speed;
+  if (r.pace  != null && r.pace > 0) return 3600 / r.pace;
+  return null;
+}
+
+
+// ════════════════════════════════════════════════
+// STEP DETECTION (DeviceMotion accelerometer)
+// ════════════════════════════════════════════════
+async function requestMotionPermission() {
+  if (typeof DeviceMotionEvent !== 'undefined' &&
+      typeof DeviceMotionEvent.requestPermission === 'function') {
+    try {
+      const result = await DeviceMotionEvent.requestPermission();
+      return result === 'granted';
+    } catch { return false; }
+  }
+  return true; // Android / desktop — no permission dialog needed
+}
+
+function setupStepDetection() {
+  stepCount    = 0;
+  stepSmooth   = 9.8;
+  stepPeak     = false;
+  stepLastTime = 0;
+
+  if (typeof DeviceMotionEvent === 'undefined') return;
+  window.addEventListener('devicemotion', onMotion, { passive: true });
+}
+
+function teardownStepDetection() {
+  window.removeEventListener('devicemotion', onMotion);
+}
+
+function onMotion(e) {
+  if (!running || paused) return;
+  const a = e.accelerationIncludingGravity;
+  if (!a || a.x == null) return;
+
+  const mag = Math.sqrt(a.x ** 2 + a.y ** 2 + a.z ** 2);
+
+  // Low-pass smooth to reduce noise while tracking the running motion envelope
+  stepSmooth = 0.75 * stepSmooth + 0.25 * mag;
+
+  const now = Date.now();
+  if (stepSmooth > STEP_THRESHOLD && !stepPeak && (now - stepLastTime) > STEP_COOLDOWN) {
+    stepCount++;
+    stepPeak     = true;
+    stepLastTime = now;
+    refreshMetrics(); // update steps/calories immediately on each step
+  } else if (stepSmooth < STEP_THRESHOLD - 0.5) {
+    stepPeak = false; // hysteresis — reset only after signal drops below threshold - 0.5
+  }
+}
+
+// ════════════════════════════════════════════════
+// RUN LIFECYCLE
+// ════════════════════════════════════════════════
+async function startRun() {
+  if (!navigator.geolocation) {
+    toast('GPS not available on this device');
+    return;
+  }
+
+  // Request iOS motion permission first (must be inside user gesture)
+  const motionOk = await requestMotionPermission();
+
+  setGps('waiting', 'Acquiring GPS…');
+
+  navigator.geolocation.getCurrentPosition(
+    pos => {
+      distKm          = 0;
+      elapsed         = 0;
+      lastPos         = pos;
+      running         = true;
+      startEpoch      = Date.now();
+      gpsWindow       = [];
+      rollingSpeedKmh = null;
+      trackPoints     = [{ lat: pos.coords.latitude, lng: pos.coords.longitude, ts: Date.now() }];
+
+      timerHandle = setInterval(() => {
+        elapsed = Math.floor((Date.now() - startEpoch) / 1000);
+        refreshMetrics();
+      }, 1000);
+
+      watchId = navigator.geolocation.watchPosition(onGps, onGpsErr, {
+        enableHighAccuracy: true,
+        maximumAge: 0,
+        timeout: 15000
+      });
+
+      if (motionOk) setupStepDetection();
+
+      acquireWakeLock();
+      setGps('active', 'GPS active');
+      show('start-btn', false);
+      el('run-btn-row').style.display = 'flex';
+      litCards(true);
+      refreshMetrics();
+    },
+    () => {
+      setGps('error', 'Location denied');
+      toast('Enable location access, then try again');
+    },
+    { enableHighAccuracy: true, timeout: 15000, maximumAge: 0 }
+  );
+}
+
+function onGps(pos) {
+  if (!running) return;
+
+  const { latitude: la2, longitude: lo2, accuracy } = pos.coords;
+  if (accuracy > 35) {
+    lastPos = pos; // advance anchor so next fix doesn't compare against a stale position
+    return;
+  }
+
+  if (lastPos) {
+    const { latitude: la1, longitude: lo1 } = lastPos.coords;
+    const delta  = haversine(la1, lo1, la2, lo2);
+    const dtHours = (Date.now() - lastPos.timestamp) / 3600000;
+    const impliedSpeedKmh = dtHours > 0 ? delta / dtHours : 0;
+
+    if (impliedSpeedKmh > 25) {
+      // GPS glitch — position jumped too far too fast; advance anchor but ignore the distance
+      lastPos = pos;
+    } else if (delta > 0.004) { // filter sub-4 m jitter
+      distKm += delta;
+      lastPos = pos;
+      trackPoints.push({ lat: la2, lng: lo2, ts: Date.now() });
+
+      // Rolling window: keep last 5 accepted points (cumulative dist + wall-clock ms)
+      gpsWindow.push({ dist: distKm, ts: Date.now() });
+      if (gpsWindow.length > 5) gpsWindow.shift();
+
+      // Speed = net distance across window / net time across window
+      if (gpsWindow.length >= 2) {
+        const first = gpsWindow[0], last = gpsWindow[gpsWindow.length - 1];
+        const dtH = (last.ts - first.ts) / 3600000;
+        rollingSpeedKmh = dtH > 0 ? (last.dist - first.dist) / dtH : null;
+      }
+    } else {
+      lastPos = pos; // sub-4 m move — advance anchor, skip accumulation
+    }
+  } else {
+    lastPos = pos;
+  }
+
+  refreshMetrics();
+}
+
+function onGpsErr() { setGps('error', 'Signal lost'); }
+
+function stopRun() {
+  if (!running) return;
+
+  running = false;
+  paused  = false;
+  clearInterval(timerHandle);
+
+  if (watchId !== null) {
+    navigator.geolocation.clearWatch(watchId);
+    watchId = null;
+  }
+
+  teardownStepDetection();
+  releaseWakeLock();
+
+  const speedKmh = elapsed > 0 ? distKm / (elapsed / 3600) : 0;
+  const calories = parseFloat((stepCount * CAL_PER_STEP).toFixed(1));
+
+  const run = {
+    id:          Date.now().toString(),
+    date:        new Date().toISOString(),
+    distance:    parseFloat(distKm.toFixed(3)),
+    duration:    elapsed,
+    speed:       parseFloat(speedKmh.toFixed(2)),
+    steps:       stepCount,
+    calories:    calories,
+    trackPoints: trackPoints,
+  };
+
+  pushRun(run);
+  toast(`Saved — ${run.distance.toFixed(2)} km · ${fmtNum(stepCount)} steps`);
+  resetUI();
+}
+
+function pauseRun() {
+  paused = true;
+  clearInterval(timerHandle);
+
+  if (watchId !== null) {
+    navigator.geolocation.clearWatch(watchId);
+    watchId = null;
+  }
+
+  lastPos         = null; // prevent distance jump on resume
+  gpsWindow       = [];   // prevent stale window carrying speed across pause
+  rollingSpeedKmh = null;
+  releaseWakeLock();
+  setGps('idle', 'Paused');
+  litCards(false);
+
+  const btn = el('pause-btn');
+  btn.innerHTML = '&#9654;&nbsp; Resume';
+  btn.className = 'btn btn-resume';
+}
+
+function resumeRun() {
+  paused = false;
+  startEpoch = Date.now() - elapsed * 1000; // preserve accumulated time
+
+  timerHandle = setInterval(() => {
+    elapsed = Math.floor((Date.now() - startEpoch) / 1000);
+    refreshMetrics();
+  }, 1000);
+
+  watchId = navigator.geolocation.watchPosition(onGps, onGpsErr, {
+    enableHighAccuracy: true,
+    maximumAge: 0,
+    timeout: 15000,
+  });
+
+  acquireWakeLock();
+  setGps('active', 'GPS active');
+  litCards(true);
+
+  const btn = el('pause-btn');
+  btn.innerHTML = '&#9646;&#9646;&nbsp; Pause';
+  btn.className = 'btn btn-pause';
+}
+
+function togglePause() {
+  paused ? resumeRun() : pauseRun();
+}
+
+function resetUI() {
+  distKm          = 0;
+  elapsed         = 0;
+  lastPos         = null;
+  gpsWindow       = [];
+  rollingSpeedKmh = null;
+  trackPoints     = [];
+  stepCount       = 0;
+  paused          = false;
+
+  show('start-btn', true);
+  el('run-btn-row').style.display = 'none';
+
+  const btn = el('pause-btn');
+  btn.innerHTML = '&#9646;&#9646;&nbsp; Pause';
+  btn.className = 'btn btn-pause';
+
+  setGps('idle', 'Ready');
+  litCards(false);
+  refreshMetrics();
+}
+
+// ════════════════════════════════════════════════
+// DISPLAY
+// ════════════════════════════════════════════════
+function refreshMetrics() {
+  const speedKmh = rollingSpeedKmh;
+  const calories = Math.round(stepCount * CAL_PER_STEP);
+
+  el('val-dist').innerHTML  = distKm.toFixed(2) + '<span class="metric-unit"> km</span>';
+  el('val-time').textContent = fmtTime(elapsed);
+  el('val-speed').innerHTML = fmtSpeed(speedKmh) + '<span class="metric-unit"> km/h</span>';
+  el('val-steps').textContent = fmtNum(stepCount);
+  el('val-cals').innerHTML  = calories + '<span class="metric-unit"> kcal</span>';
+}
+
+function setGps(state, text) {
+  const dot = el('gps-dot');
+  dot.className = 'gps-dot' + (state !== 'idle' ? ` ${state}` : '');
+  el('gps-text').textContent = text;
+}
+
+function litCards(on) {
+  ['card-dist', 'card-time', 'card-speed', 'card-steps', 'card-cals'].forEach(id =>
+    el(id).classList.toggle('lit', on));
+}
+
+// ════════════════════════════════════════════════
+// HISTORY
+// ════════════════════════════════════════════════
+function renderHistory() {
+  const runs    = loadRuns();
+  const totalKm = runs.reduce((s, r) => s + (parseFloat(r.distance) || 0), 0);
+  const speeds  = runs.map(runSpeed).filter(v => v != null && isFinite(v) && v > 0);
+  const bestSpd = speeds.length > 0 ? Math.max(...speeds) : null;
+  const avgSpd  = speeds.length > 0 ? speeds.reduce((s, v) => s + v, 0) / speeds.length : null;
+
+  el('st-runs').textContent   = runs.length;
+  el('st-km').textContent     = totalKm.toFixed(2);
+  el('st-speed').textContent  = bestSpd ? bestSpd.toFixed(1) : '--';
+  el('st-avgspd').textContent = avgSpd  ? avgSpd.toFixed(1)  : '--';
+
+  const sel = el('run-select');
+  if (runs.length > 1) {
+    sel.innerHTML = runs.map((r, i) =>
+      `<option value="${i}">${fmtDate(r.date)} · ${r.distance.toFixed(2)} km</option>`
+    ).join('');
+    sel.value = '0';
+    sel.style.display = '';
+  } else {
+    sel.innerHTML = '';
+    sel.style.display = 'none';
+  }
+
+  renderChart(runs.length > 0 ? runs[0] : null);
+  renderList(runs);
+}
+
+// Walk trackPoints and emit one speed value per 100m segment.
+function computeSegments(pts) {
+  if (!pts || pts.length < 2) return [];
+  const SEG_KM = 0.1;
+  const segs = [];
+  let segDistKm  = 0;
+  let segStartTs = pts[0].ts;
+  let segNum     = 1;
+
+  for (let i = 1; i < pts.length; i++) {
+    const prev = pts[i - 1];
+    const curr = pts[i];
+    const dKm  = haversine(prev.lat, prev.lng, curr.lat, curr.lng);
+    const dtMs = curr.ts - prev.ts;
+    let   rem  = dKm;
+
+    // A single GPS jump may span more than one 100m segment
+    while (rem > 0 && segDistKm + rem >= SEG_KM) {
+      const needed   = SEG_KM - segDistKm;
+      const frac     = dKm > 0 ? needed / dKm : 0;
+      const segEndTs = prev.ts + frac * dtMs;
+      const dtHours  = (segEndTs - segStartTs) / 3600000;
+      const speed    = dtHours > 0 ? SEG_KM / dtHours : 0;
+
+      segs.push({ label: `${segNum * 100}m`, speed: parseFloat(speed.toFixed(2)) });
+      segNum++;
+      rem       -= needed;
+      segDistKm  = 0;
+      segStartTs = segEndTs;
+    }
+    segDistKm += rem;
+  }
+
+  return segs;
+}
+
+function onRunSelect(sel) {
+  const runs = loadRuns();
+  renderChart(runs[parseInt(sel.value)] || null);
+}
+
+function renderChart(run) {
+  const canvas = el('chart');
+  const empty  = el('chart-empty');
+
+  const pts  = run && run.trackPoints;
+  const segs = pts ? computeSegments(pts) : [];
+
+  if (segs.length === 0) {
+    canvas.style.display = 'none';
+    empty.style.display  = 'flex';
+    empty.textContent    = run ? (pts ? 'Run too short — no 100m segments yet' : 'No GPS track for this run')
+                                : 'No runs recorded yet';
+    if (chartInst) { chartInst.destroy(); chartInst = null; }
+    return;
+  }
+
+  canvas.style.display = 'block';
+  empty.style.display  = 'none';
+
+  const labels = segs.map(s => s.label);
+  const data   = segs.map(s => s.speed);
+  const maxSpd = Math.max(...data);
+
+  if (chartInst) chartInst.destroy();
+
+  chartInst = new Chart(canvas.getContext('2d'), {
+    type: 'bar',
+    data: {
+      labels,
+      datasets: [{
+        data,
+        backgroundColor: data.map(v =>
+          `rgba(0, 208, 132, ${maxSpd > 0 ? (0.3 + (v / maxSpd) * 0.6).toFixed(2) : 0.5})`
+        ),
+        borderColor:  'rgba(0, 208, 132, 0.7)',
+        borderWidth:  1,
+        borderRadius: 4,
+      }]
+    },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      plugins: {
+        legend: { display: false },
+        tooltip: {
+          displayColors: false,
+          backgroundColor: '#192030',
+          borderColor: '#1e2d3d',
+          borderWidth: 1,
+          titleColor: '#5a7a9a',
+          bodyColor: '#e8f0fe',
+          callbacks: { label: ctx => ` ${ctx.raw} km/h` }
+        }
+      },
+      scales: {
+        x: {
+          ticks: { color: '#5a7a9a', font: { size: 10 }, maxRotation: 45, minRotation: 0 },
+          grid:  { color: 'rgba(30,45,61,0.8)' },
+          border:{ color: 'transparent' }
+        },
+        y: {
+          ticks: { color: '#5a7a9a', font: { size: 11 }, callback: v => v + ' km/h' },
+          grid:  { color: 'rgba(30,45,61,0.8)' },
+          border:{ color: 'transparent' },
+          beginAtZero: true
+        }
+      }
+    }
+  });
+}
+
+function renderList(runs) {
+  const list = el('run-list');
+
+  if (runs.length === 0) {
+    list.innerHTML = `
+      <div class="empty">
+        <span class="empty-icon">🏃</span>
+        <p>No runs yet.<br><strong>Tap Track</strong> to log your first run.</p>
+      </div>`;
+    return;
+  }
+
+  list.innerHTML = runs.map((r, i) => `
+    <div class="run-card">
+      <div class="run-num">${runs.length - i}</div>
+      <div class="run-info">
+        <div class="run-date">${fmtDate(r.date)}</div>
+      </div>
+      <button class="del-btn" onclick="askDelete('${r.id}')" title="Delete">&#x1F5D1;</button>
+    </div>`
+  ).join('');
+}
+
+function askDelete(id) {
+  if (confirm('Delete this run?')) removeRun(id);
+}
+
+// ════════════════════════════════════════════════
+// NAVIGATION
+// ════════════════════════════════════════════════
+function switchView(view, tab) {
+  document.querySelectorAll('.view').forEach(v => v.classList.remove('active'));
+  document.querySelectorAll('.nav-tab').forEach(t => t.classList.remove('active'));
+  el(view + '-view').classList.add('active');
+  tab.classList.add('active');
+  if (view === 'history') renderHistory();
+}
+
+// ════════════════════════════════════════════════
+// WAKE LOCK
+// ════════════════════════════════════════════════
+async function acquireWakeLock() {
+  if (!('wakeLock' in navigator)) return;
+  try { wakeLock = await navigator.wakeLock.request('screen'); } catch {}
+}
+
+async function releaseWakeLock() {
+  if (wakeLock) { try { await wakeLock.release(); } catch {} wakeLock = null; }
+}
+
+document.addEventListener('visibilitychange', () => {
+  if (document.visibilityState === 'visible' && running) acquireWakeLock();
+});
+
+// ════════════════════════════════════════════════
+// TOAST
+// ════════════════════════════════════════════════
+let toastTimer;
+function toast(msg) {
+  const t = el('toast');
+  t.textContent = msg;
+  t.classList.add('show');
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => t.classList.remove('show'), 3200);
+}
+
+// ════════════════════════════════════════════════
+// UTILS
+// ════════════════════════════════════════════════
+function el(id)            { return document.getElementById(id); }
+function show(id, visible) { el(id).style.display = visible ? 'flex' : 'none'; }
+
+// ════════════════════════════════════════════════
+// BMI CALCULATOR
+// ════════════════════════════════════════════════
+function openBMI() {
+  el('bmi-overlay').style.display = 'flex';
+  // Reset needle instantly (no transition), then re-enable for next calculate
+  const needle = el('bmi-needle-group');
+  needle.style.transition = 'none';
+  needle.style.transform  = 'rotate(-90deg)';
+  needle.style.opacity    = '0';
+  el('bmi-result-info').style.visibility = 'hidden';
+  // Re-enable transition after browser has painted the reset state
+  requestAnimationFrame(() => requestAnimationFrame(() => {
+    needle.style.transition = '';
+  }));
+}
+
+function closeBMI() {
+  el('bmi-overlay').style.display = 'none';
+}
+
+function setWeightUnit(unit) {
+  weightUnit = unit;
+  el('weight-kg-btn').classList.toggle('active', unit === 'kg');
+  el('weight-lb-btn').classList.toggle('active', unit === 'lb');
+  el('weight-unit-label').textContent = unit;
+  el('bmi-weight').value = '';
+  el('bmi-weight').placeholder = unit === 'kg' ? '70' : '154';
+}
+
+function setHeightUnit(unit) {
+  heightUnit = unit;
+  el('height-cm-btn').classList.toggle('active', unit === 'cm');
+  el('height-ftin-btn').classList.toggle('active', unit === 'ftin');
+  const cmGroup   = el('height-cm-group');
+  const ftinGroup = el('height-ftin-group');
+  if (unit === 'cm') {
+    cmGroup.style.display   = '';
+    ftinGroup.style.display = 'none';
+  } else {
+    cmGroup.style.display   = 'none';
+    ftinGroup.style.display = 'flex';
+  }
+  el('bmi-height').value    = '';
+  el('bmi-height-ft').value = '';
+  el('bmi-height-in').value = '';
+}
+
+function calculateBMI() {
+  const rawWeight = parseFloat(el('bmi-weight').value);
+  if (!rawWeight || rawWeight <= 0) {
+    toast('Enter a valid weight and height');
+    return;
+  }
+  const weightKg = weightUnit === 'lb' ? rawWeight * 0.453592 : rawWeight;
+
+  let heightCm;
+  if (heightUnit === 'cm') {
+    heightCm = parseFloat(el('bmi-height').value);
+    if (!heightCm || heightCm <= 0) {
+      toast('Enter a valid weight and height');
+      return;
+    }
+  } else {
+    const ft      = parseFloat(el('bmi-height-ft').value) || 0;
+    const inches  = parseFloat(el('bmi-height-in').value) || 0;
+    if (ft <= 0 && inches <= 0) {
+      toast('Enter a valid weight and height');
+      return;
+    }
+    heightCm = ft * 30.48 + inches * 2.54;
+  }
+
+  const bmi      = weightKg / ((heightCm / 100) ** 2);
+  const bmiFixed = bmi.toFixed(1);
+
+  // Map BMI → gauge rotation
+  // BMI range 10–40 → angle 180°–0° → rotation = (90 - angle) = ((bmi-10)/30)*180 - 90
+  const clamped  = Math.max(10, Math.min(40, bmi));
+  const rotation = ((clamped - 10) / 30) * 180 - 90;
+
+  const needle = el('bmi-needle-group');
+  needle.style.opacity   = '1';
+  needle.style.transform = `rotate(${rotation}deg)`;
+
+  // Category
+  let label, cls;
+  if (bmi < 18.5) {
+    label = 'Underweight'; cls = 'bmi-cat-under';
+  } else if (bmi < 25) {
+    label = 'Normal Weight'; cls = 'bmi-cat-normal';
+  } else if (bmi < 30) {
+    label = 'Overweight'; cls = 'bmi-cat-over';
+  } else {
+    label = 'Obese'; cls = 'bmi-cat-obese';
+  }
+
+  el('bmi-value').textContent = bmiFixed;
+  const catEl = el('bmi-cat-label');
+  catEl.textContent = label;
+  catEl.className   = `bmi-cat-label ${cls}`;
+  el('bmi-result-info').style.visibility = 'visible';
+}
+
+// ════════════════════════════════════════════════
+// INIT
+// ════════════════════════════════════════════════
+(function init() {
+  // Pick a random quote for this session
+  const q = QUOTES[Math.floor(Math.random() * QUOTES.length)];
+  el('quote-text').textContent   = `"${q.text}"`;
+  el('quote-author').textContent = q.author;
+
+  refreshMetrics();
+})();
+</script>
+
+<!-- ═══ BMI OVERLAY ═══ -->
+<div id="bmi-overlay" class="bmi-overlay" style="display:none">
+
+  <div class="bmi-top">
+    <button class="bmi-back" onclick="closeBMI()">&#8592; Back</button>
+    <span class="bmi-title">BMI Calculator</span>
+  </div>
+
+  <div class="bmi-body">
+
+    <div class="bmi-fields">
+      <div class="bmi-field">
+        <div class="bmi-field-header">
+          <label class="bmi-label">Weight</label>
+          <div class="unit-toggle">
+            <button class="unit-btn active" id="weight-kg-btn" onclick="setWeightUnit('kg')">kg</button>
+            <button class="unit-btn" id="weight-lb-btn" onclick="setWeightUnit('lb')">lb</button>
+          </div>
+        </div>
+        <div class="bmi-input-group">
+          <input type="number" id="bmi-weight" class="bmi-input" placeholder="70" min="1" max="1000" inputmode="decimal">
+          <span class="bmi-unit" id="weight-unit-label">kg</span>
+        </div>
+      </div>
+      <div class="bmi-field">
+        <div class="bmi-field-header">
+          <label class="bmi-label">Height</label>
+          <div class="unit-toggle">
+            <button class="unit-btn active" id="height-cm-btn" onclick="setHeightUnit('cm')">cm</button>
+            <button class="unit-btn" id="height-ftin-btn" onclick="setHeightUnit('ftin')">ft/in</button>
+          </div>
+        </div>
+        <div class="bmi-input-group" id="height-cm-group">
+          <input type="number" id="bmi-height" class="bmi-input" placeholder="170" min="1" max="300" inputmode="decimal">
+          <span class="bmi-unit">cm</span>
+        </div>
+        <div id="height-ftin-group" style="display:none; flex-direction:column; gap:6px;">
+          <div class="bmi-input-group">
+            <input type="number" id="bmi-height-ft" class="bmi-input" placeholder="5" min="0" max="8" inputmode="numeric">
+            <span class="bmi-unit">ft</span>
+          </div>
+          <div class="bmi-input-group">
+            <input type="number" id="bmi-height-in" class="bmi-input" placeholder="11" min="0" max="11" inputmode="numeric">
+            <span class="bmi-unit">in</span>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <button class="btn btn-start" onclick="calculateBMI()" style="width:100%">
+      Calculate BMI
+    </button>
+
+    <div class="bmi-gauge-wrap">
+      <!--
+        Gauge: center (130,140), arc radius 95, stroke-width 24
+        BMI range 10–40 mapped to 180°–0° (left → top → right)
+        Zone boundary coordinates pre-computed:
+          BMI 10   → (35, 140)
+          BMI 18.5 → (70.2, 66.2)
+          BMI 25   → (129, 45)
+          BMI 30   → (176.6, 57.2)   [30 = 180-(20/30)*180 = 60°]
+          BMI 40   → (225, 140)
+      -->
+      <svg viewBox="0 0 260 155" class="bmi-gauge" xmlns="http://www.w3.org/2000/svg">
+        <!-- Dark background track -->
+        <path d="M 35,140 A 95,95 0 0,0 225,140"
+              stroke="#192030" stroke-width="24" fill="none" stroke-linecap="butt"/>
+        <!-- Underweight — blue -->
+        <path d="M 35,140 A 95,95 0 0,0 70.2,66.2"
+              stroke="#3b82f6" stroke-width="24" fill="none" stroke-linecap="butt"/>
+        <!-- Normal — green -->
+        <path d="M 70.2,66.2 A 95,95 0 0,0 129,45"
+              stroke="#00d084" stroke-width="24" fill="none" stroke-linecap="butt"/>
+        <!-- Overweight — orange -->
+        <path d="M 129,45 A 95,95 0 0,0 176.6,57.2"
+              stroke="#f59e0b" stroke-width="24" fill="none" stroke-linecap="butt"/>
+        <!-- Obese — red -->
+        <path d="M 176.6,57.2 A 95,95 0 0,0 225,140"
+              stroke="#ff4f4f" stroke-width="24" fill="none" stroke-linecap="butt"/>
+
+        <!-- Needle (initially hidden at far-left / BMI=10 position) -->
+        <g id="bmi-needle-group" style="transform: rotate(-90deg); opacity: 0">
+          <line x1="130" y1="140" x2="130" y2="62"
+                stroke="#e8f0fe" stroke-width="2.5" stroke-linecap="round"/>
+          <polygon points="130,53 125,65 135,65" fill="#e8f0fe"/>
+        </g>
+
+        <!-- Center cap -->
+        <circle cx="130" cy="140" r="8" fill="#080c10" stroke="#e8f0fe" stroke-width="2.5"/>
+
+        <!-- Min / max labels -->
+        <text x="26"  y="155" font-size="9" fill="#5a7a9a" text-anchor="middle" font-family="system-ui,sans-serif">10</text>
+        <text x="234" y="155" font-size="9" fill="#5a7a9a" text-anchor="middle" font-family="system-ui,sans-serif">40</text>
+      </svg>
+
+      <!-- Color legend -->
+      <div class="bmi-legend">
+        <div class="bmi-legend-item"><span class="bmi-legend-dot" style="background:#3b82f6"></span>Underweight &lt;18.5</div>
+        <div class="bmi-legend-item"><span class="bmi-legend-dot" style="background:#00d084"></span>Normal 18.5–24.9</div>
+        <div class="bmi-legend-item"><span class="bmi-legend-dot" style="background:#f59e0b"></span>Overweight 25–29.9</div>
+        <div class="bmi-legend-item"><span class="bmi-legend-dot" style="background:#ff4f4f"></span>Obese 30+</div>
+      </div>
+
+      <!-- Result (hidden until first calculation) -->
+      <div class="bmi-result-info" id="bmi-result-info" style="visibility:hidden">
+        <div class="bmi-value" id="bmi-value">--</div>
+        <div class="bmi-cat-label" id="bmi-cat-label">--</div>
+      </div>
+    </div>
+
+  </div>
+</div>
+
+</body>
+</html>
