@@ -32,4 +32,4 @@ Building this taught me the real-world challenges of GPS-based apps — handling
 
 ## Run It Locally
 
-Just open `index.html` in any browser. No build step, no dependencies to install.
+Just open `run-tracker.html` in any browser. No build step, no dependencies to install.
