@@ -1,5 +1,3 @@
-# run---tracker
-A GPS-based running tracker PWA — track runs in real-time, view history with stats and charts, calculate BMI. Built with vanilla JS.
 # RunTracker
 
 A lightweight, installable running tracker built as a Progressive Web App — no backend, no frameworks, just HTML, CSS and JavaScript.
